@@ -42,12 +42,27 @@ extension CGPoint {
 
 class GameScene: SKScene {
     
+    struct PhysicsCategory {
+        static let none          : UInt32 = 0
+        static let all           : UInt32 = UInt32.max
+        static let monster       : UInt32 = 0b1             // 1
+        static let projectile    : UInt32 = 0b10            // 2
+    }
+    
+    
     let player = SKSpriteNode(imageNamed: "player")
     
     override func didMove(to view: SKView) {
         backgroundColor = SKColor.white
         player.position = CGPoint(x: size.width * 0.1, y: size.height * 0.5)
         addChild(player)
+        
+        physicsWorld.gravity = .zero
+        physicsWorld.contactDelegate = self
+        
+        
+        
+        
         
         func random() -> CGFloat {
             return CGFloat(Float(arc4random()) / 0xFFFFFFFF) // Этот блок кода включает в себя некоторые вспомогательные методы для генерации случайного числа в диапазоне с помощью arc4random(). Этого достаточно для простых потребностей в генерации случайных чисел в этой игре, но если вы хотите более продвинутую функциональность, ознакомьтесь с API случайных чисел в GameplayKit.
@@ -61,6 +76,12 @@ class GameScene: SKScene {
             
             // создаем спрайт
             let monster = SKSpriteNode(imageNamed: "monster")
+            
+            monster.physicsBody = SKPhysicsBody(rectangleOf: monster.size) // Создайте физическое тело для спрайта. В этом случае тело определяется как прямоугольник того же размера, что и спрайт, так как это приличное приближение для монстра
+            monster.physicsBody?.isDynamic = true // Установите спрайт динамическим. Это означает, что физический движок не будет контролировать движение монстра. Вы будете проходить через уже написанный код, используя действия перемещения
+            monster.physicsBody?.categoryBitMask = PhysicsCategory.monster // Установите битовую маску категории как monsterCategory, которую вы определили ранее
+            monster.physicsBody?.contactTestBitMask = PhysicsCategory.projectile // contactTestBitMaskуказывает, какие категории объектов этот объект должен уведомлять прослушиватель контакта при их пересечении. Здесь вы выбираете снаряды
+            monster.physicsBody?.collisionBitMask = PhysicsCategory.none // collisionBitMask указывает, на какие категории объектов этот объект обрабатывает ответные контакты физического движка (т.е. отскакивает). Вы не хотите, чтобы монстр и снаряд отскакивали друг от друга - это нормально для них, чтобы пройти друг через друга в этой игре - так что вы установили это на .none
             
             // выбираем где родить монстра по оси Y
             let actualY = random(min: monster.size.height / 2, max: size.height - monster.size.height / 2)
@@ -104,6 +125,13 @@ class GameScene: SKScene {
         //определить  смещение местоположения к снаряду
         let projectile = SKSpriteNode(imageNamed: "projectile")
         projectile.position = player.position
+        
+        projectile.physicsBody = SKPhysicsBody(circleOfRadius: projectile.size.width/2)
+        projectile.physicsBody?.isDynamic = true
+        projectile.physicsBody?.categoryBitMask = PhysicsCategory.projectile
+        projectile.physicsBody?.contactTestBitMask = PhysicsCategory.monster
+        projectile.physicsBody?.usesPreciseCollisionDetection = true
+        
         // смещение
         let offset = touchLocation - projectile.position
         // проверить позицию
@@ -122,6 +150,34 @@ class GameScene: SKScene {
         projectile.run(SKAction.sequence([actionMove, actionMoveDone]))
     }
     
+    func projectileDidCollideWithMonster (projectile: SKSpriteNode, monster: SKSpriteNode) {
+        print("Hit")
+        projectile.removeFromParent()
+        monster.removeFromParent()
+    }
+
     
 }
 
+extension GameScene : SKPhysicsContactDelegate {
+    
+    func didBegin(_ contact: SKPhysicsContact) {
+        var firstBody : SKPhysicsBody
+        var secondBody: SKPhysicsBody
+        if contact.bodyA.categoryBitMask < contact.bodyB.categoryBitMask {
+            firstBody = contact.bodyA
+            secondBody = contact.bodyB
+        } else {
+            firstBody = contact.bodyB
+            secondBody = contact.bodyA
+        }
+        
+        if ((firstBody.categoryBitMask & PhysicsCategory.monster != 0 ) && (secondBody.categoryBitMask & PhysicsCategory.projectile != 0)) {
+            if let monster = firstBody.node as? SKSpriteNode, let projectile = secondBody.node as? SKSpriteNode {
+                projectileDidCollideWithMonster(projectile: projectile, monster: monster)
+            }
+        }
+        
+    }
+    
+}
